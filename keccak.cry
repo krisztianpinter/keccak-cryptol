@@ -1,0 +1,435 @@
+module keccak where
+
+//////////
+// this work is in the public domain. no rights reserved.
+// if you want to blame anyone, you can blame:
+//   Krisztián Pintér
+//   pinterkr@gmail.com 
+///////
+
+////////////////
+// bit order
+//
+// the bit order is little endian as defined in the reference. if you want to
+// use the regular bit order (0x80 as 10000000), you need to transform your
+// byte stream back and forth with to_bits and to_bytes. or you can construct
+// a state immediately using state_of_bytes and state_of_bits, and convert a 
+// state to streams with state_bytes and state_bits.
+////////
+
+////////////////
+// reference and fast versions
+//
+// numerous functions are defined in two versions, one verbatim from the 
+// reference, and one optimized. the reference versions are marked with a 
+// prime. the fast versions are used in higher level functions.
+////////
+
+////////////////
+// properties
+//
+// some properties are provided to check the implementation. in particular
+// all opimized versions are checked against the reference implementations.
+// beware, some of the properties will probably be not provable in reasonable
+// time and memory. you can check them though.
+////////////
+
+
+//////////////////// state //////////////////// 
+
+to_bytes : {a} () => [a*8] -> [a][8]
+to_bytes bitstrm = [ reverse b | b <- groupBy`{8} bitstrm ]
+
+to_bits : {a} () => [a][8] -> [a*8]
+to_bits bytestrm = join [ reverse b | b <- bytestrm ]
+
+state_bits : {size, w, l} 
+             (fin size, fin l, fin w,
+              l >=3, l <= 6, w >= 8, w <= 64, size >= 200, size <= 1600,               
+              w == 2^^l, l == lg2 w, size == 5*5*w, w == size/5/5, l == lg2 (size/5/5), size == 5*5*2^^l) 
+             => [5][5][w] -> [5*5*w]
+state_bits s = join (join (transpose s))
+
+state_bytes : {size, w, l} 
+              (fin size, fin l, fin w,
+               l >=3, l <= 6, w >= 8, w <= 64, size >= 200, size <= 1600, 
+               w == 2^^l, l == lg2 w, size == 5*5*w, w == size/5/5, l == lg2 (size/5/5), size == 5*5*2^^l,
+               w == 2 ^^ lg2 w, w == 8 * 2 ^^ (l - 3)) 
+              => [5][5][w] -> [5*5*(2^^(l-3))][8]
+state_bytes s = to_bytes (state_bits s)
+
+state_of_bits : {size, w, l} 
+                (fin size, fin l, fin w,
+                 l >=3, l <= 6, w >= 8, w <= 64, size >= 200, size <= 1600,               
+                 w == 2^^l, l == lg2 w, size == 5*5*w, w == size/5/5, l == lg2 (size/5/5), size == 5*5*2^^l) 
+                => [5*5*w] -> [5][5][w]
+state_of_bits bitstrm = transpose (split ( split bitstrm ))
+
+state_of_bytes : {size, w, l} 
+              (fin size, fin l, fin w,
+               l >=3, l <= 6, w >= 8, w <= 64, size >= 200, size <= 1600, 
+               w == 2^^l, l == lg2 w, size == 5*5*w, w == size/5/5, l == lg2 (size/5/5), size == 5*5*2^^l,
+               w == 2 ^^ lg2 w, 8 * 2 ^^ (l - 3) == w) 
+              => [5*5*2^^(l-3)][8] -> [5][5][w]
+state_of_bytes bytestrm = transpose (split ( split (to_bits bytestrm) ) )
+
+// docu: s[w(5y + x) + z] = a[x][y][z]
+state_of_bits' : {size, w, l} 
+                 (fin size, fin l, fin w,
+                  l >=3, l <= 6, w >= 8, w <= 64, size >= 200, size <= 1600,               
+                  w == 2^^l, l == lg2 w, size == 5*5*w, w == size/5/5, l == lg2 (size/5/5), size == 5*5*2^^l) 
+                 => [5*5*w] -> [5][5][w]
+state_of_bits' s = [ [ [ s@(`w*(5*y + x) + z) | z:[11] <- [0..w-1] ] | y:[11] <- [0..4] ] | x:[11] <- [0..4] ] 
+
+  
+property state_bit_order_200 s = state_of_bits`{200} s == state_of_bits'`{200} s
+property state_bit_order_400 s = state_of_bits`{400} s == state_of_bits'`{400} s
+property state_bit_order_800 s = state_of_bits`{800} s == state_of_bits'`{800} s
+property state_bit_order_1600 s = state_of_bits`{1600} s == state_of_bits'`{1600} s
+
+//////////////////// theta ////////////////////
+
+theta' : {size, w, l} 
+         (fin size, fin l, fin w,
+          l >=3, l <= 6, w >= 8, w <= 64, size >= 200, size <= 1600,               
+          w == 2^^l, l == lg2 w, size == 5*5*w, w == size/5/5, l == lg2 (size/5/5), size == 5*5*2^^l) 
+         => [5][5][w] -> [5][5][w]
+theta' A = [ [ [ (A@x@y@z) ^ (sum ((x+4)%5) z) ^ (sum ((x+1)%5) (z-1))   
+                | (z:[l]) <- take`{w} [0...] ]  | (y:[6]) <- [0..4] ]  | (x:[6]) <- [0..4] ]
+       where sum xx zz = A@xx@0@zz ^ A@xx@1@zz ^ A@xx@2@zz ^ A@xx@3@zz ^ A@xx@4@zz
+
+
+theta : {a} () => [5][5][a] -> [5][5][a]
+theta A = [ [ (A@x@y) ^ (par@((x+4)%5)) ^ ( (par@((x+1)%5)) >>> 1 )
+             | y <- [0..4]:[_][4] ]  | x <- [0..4]:[_][4] ]
+           where par = [ sheet@0 ^ sheet@1 ^ sheet@2 ^ sheet@3 ^ sheet@4 | sheet <- A ]        
+
+property theta_ok_200 A  =  theta A == theta'`{200} A
+property theta_ok_400 A  =  theta A == theta'`{400} A
+property theta_ok_800 A  =  theta A == theta'`{800} A
+property theta_ok_1600 A  =  theta A == theta'`{1600} A
+
+//////////////////// rho ////////////////////
+             
+rho_mult : [2][2][6] -> [2][2][6] -> [2][2][6]
+rho_mult m1 m2 = [ [ (m1@j@0 * m2@0@i + m1@j@1 * m2@1@i)%5 | i <- [0..1] ] | j <- [0..1] ] 
+
+trans_mat : [2][2][6]
+trans_mat = [[0, 1], 
+             [2, 3]]
+
+rho_mat_pows : [24][2][2][6]
+rho_mat_pows = [rho_matid] # [ (rho_mult prev trans_mat) | p <- [1..23] | prev <- rho_mat_pows ] 
+  where rho_matid : [2][2][6]
+        rho_matid = [[1, 0], [0, 1]]
+
+rho_chk : [2][2][6] -> [6] -> [6] -> Bit
+rho_chk m x y = m@0@0 == x && m@1@0 == y 
+
+rho_rot' : {l} (l >= 3, l <= 6) => [6] -> [6] -> [l]
+rho_rot' x y = if x==0 && y==0 then 0 
+  else drop`{10-l} ( ((find!0)+1) * ((find!0)+2) / 2 ) 
+              where find : [_][10]
+                    find = [0] # [ if (rho_chk mpow x y) then t else old 
+                                  | t <- [0..23] | mpow <- rho_mat_pows | old <- find ]  
+
+rho_rot : {l} (l >= 3, l <= 6) => [6] -> [6] -> [l]
+rho_rot x y = drop`{9-l} (rots@x@y) 
+  where rots : [5][5][9]
+        rots = transpose [[  0,   1, 190,  28,  91], 
+                          [ 36, 300,   6,  55, 276], 
+                          [  3,  10, 171, 153, 231],
+                          [105,  45,  15,  21, 136],
+                          [210,  66, 253, 120,  78]] 
+
+property rho_rot_ok_3 x y = x >= 5 || y >= 5 || rho_rot`{3} x y == rho_rot'`{3} x y
+property rho_rot_ok_4 x y = x >= 5 || y >= 5 || rho_rot`{4} x y == rho_rot'`{4} x y
+property rho_rot_ok_5 x y = x >= 5 || y >= 5 || rho_rot`{5} x y == rho_rot'`{5} x y
+property rho_rot_ok_6 x y = x >= 5 || y >= 5 || rho_rot`{6} x y == rho_rot'`{6} x y
+
+rho' : {size, w, l} 
+       (fin size, fin l, fin w,
+        l >=3, l <= 6, w >= 8, w <= 64, size >= 200, size <= 1600,               
+        w == 2^^l, l == lg2 w, size == 5*5*w, w == size/5/5, l == lg2 (size/5/5), size == 5*5*2^^l) 
+       => [5][5][w] -> [5][5][w]
+rho' A = [ [ [ A@x@y@(z-(rho_rot`{l} x y))
+              | z <- take`{w}[0...] ]  | y <- [0..4] ]  | x <- [0..4] ]
+
+       
+rho : {size, w, l} 
+      (fin size, fin l, fin w,
+       l >=3, l <= 6, w >= 8, w <= 64, size >= 200, size <= 1600,               
+       w == 2^^l, l == lg2 w, size == 5*5*w, w == size/5/5, l == lg2 (size/5/5), size == 5*5*2^^l) 
+      => [5][5][w] -> [5][5][w]
+rho A = [ [ A@x@y >>> (rho_rot'`{l} x y) | y <- [0..4] ]  | x <- [0..4] ]        
+
+
+property rho_ok_200 A = rho`{200} A == rho'`{200} A
+property rho_ok_400 A = rho`{400} A == rho'`{400} A
+property rho_ok_800 A = rho`{800} A == rho'`{800} A
+property rho_ok_1600 A = rho`{1600} A == rho'`{1600} A
+
+
+//////////////////// pi ////////////////////
+
+pi_mult : [2][2][6] -> [2][6] -> [2][6]
+pi_mult m v = [ (m@0@0 * v@0 + m@0@1 * v@1) % 5,
+                (m@1@0 * v@0 + m@1@1 * v@1) % 5 ]
+
+pi_srcxy : ([6], [6]) -> ([6], [6])
+pi_srcxy (x, y) = srch!0
+  where srch : [_]([6], [6])
+        srch = [(0, 0)] # [if (pi_mult trans_mat [x', y']) == [x, y] then (x', y') else prev   
+                           | x' <- [0..4] , y' <- [0..4] | prev <- srch ]
+
+
+pi' : {size, w, l} 
+      (fin size, fin l, fin w,
+       l >=3, l <= 6, w >= 8, w <= 64, size >= 200, size <= 1600,               
+       w == 2^^l, l == lg2 w, size == 5*5*w, w == size/5/5, l == lg2 (size/5/5), size == 5*5*2^^l) 
+      => [5][5][w] -> [5][5][w]
+pi' A = [ [ A@x'@y' where (x', y') = pi_srcxy (x, y)
+           | y <- [0..4] ] | x <- [0..4] ]
+
+
+//         -1
+// | 0 1 |     _  | 1 3 |
+// | 2 3 |     -  | 1 0 |
+
+pi : {size, w, l} 
+     (fin size, fin l, fin w,
+      l >=3, l <= 6, w >= 8, w <= 64, size >= 200, size <= 1600,               
+      w == 2^^l, l == lg2 w, size == 5*5*w, w == size/5/5, l == lg2 (size/5/5), size == 5*5*2^^l) 
+     => [5][5][w] -> [5][5][w]
+pi A = [ [ A@x'@y' where x' = (x + 3*y) % 5
+                         y' = x
+          | (y:[5]) <- [0..4] ] | (x:[5]) <- [0..4] ]
+
+
+property pi24_200 A =  s!0 == A  where s = [A] # [ pi`{200} prev | i <- [0..23]  | prev <- s ]  
+property pi24_400 A =  s!0 == A  where s = [A] # [ pi`{400} prev | i <- [0..23]  | prev <- s ]  
+property pi24_800 A =  s!0 == A  where s = [A] # [ pi`{800} prev | i <- [0..23]  | prev <- s ]  
+property pi24_1600 A =  s!0 == A  where s = [A] # [ pi`{1600} prev | i <- [0..23]  | prev <- s ]  
+
+property pi_ok_200 A = pi`{200} A == pi'`{200} A
+property pi_ok_400 A = pi`{400} A == pi'`{400} A
+property pi_ok_800 A = pi`{800} A == pi'`{800} A
+property pi_ok_1600 A = pi`{1600} A == pi'`{1600} A
+
+
+//////////////////// chi ////////////////////
+
+chi : {size, w, l} 
+      (fin size, fin l, fin w,
+       l >=3, l <= 6, w >= 8, w <= 64, size >= 200, size <= 1600,               
+       w == 2^^l, l == lg2 w, size == 5*5*w, w == size/5/5, l == lg2 (size/5/5), size == 5*5*2^^l) 
+      => [5][5][w] -> [5][5][w]
+chi A = [ A@x ^ ( ~(A@((x+1)%5)) && A@((x+2)%5) ) | x <- [0..4] ]
+
+
+//////////////////// iota ////////////////////
+
+iota : {size, w, l} 
+       (fin size, fin l, fin w,
+        l >=3, l <= 6, w >= 8, w <= 64, size >= 200, size <= 1600,               
+        w == 2^^l, l == lg2 w, size == 5*5*w, w == size/5/5, l == lg2 (size/5/5), size == 5*5*2^^l) 
+       => [5][5][w] -> [w] -> [5][5][w]
+iota A rc = [ [ A@0@0 ^ rc ] # A@0@@[1..4] ] # A@@[1..4]
+
+
+//////////////////// keccak_round ////////////////////
+   
+keccak_round : {size, w, l} 
+               (fin size, fin l, fin w,
+                l >=3, l <= 6, w >= 8, w <= 64, size >= 200, size <= 1600,               
+                w == 2^^l, l == lg2 w, size == 5*5*w, w == size/5/5, l == lg2 (size/5/5), size == 5*5*2^^l,
+                w == 2 ^^ lg2 w) 
+               => [5][5][w] -> [w] -> [5][5][w]
+keccak_round A rc = iota (chi (pi (rho (theta A)))) rc 
+
+keccak_round' : {size, w, l} 
+               (fin size, fin l, fin w,
+                l >=3, l <= 6, w >= 8, w <= 64, size >= 200, size <= 1600,               
+                w == 2^^l, l == lg2 w, size == 5*5*w, w == size/5/5, l == lg2 (size/5/5), size == 5*5*2^^l,
+                w == 2 ^^ lg2 w) 
+               => [5][5][w] -> [w] -> [5][5][w]
+keccak_round' A rc = iota (chi (pi' (rho' (theta' A)))) rc 
+
+
+//////////////////// rc //////////////////////
+
+rc_poly = <| x^^8 + x^^6 + x^^5 + x^^4 + 1 |>
+
+rc_lfsr_s : [inf][8]
+rc_lfsr_s = bytes 
+  where bytes : [inf][8]
+        bytes = [0x01] # [ pmod (([False]#s) << 1) rc_poly | s <- bytes ]
+rc_lfsr : [inf]
+rc_lfsr = [ b!0 | b <- rc_lfsr_s ]
+
+// todo: improve, disgusting
+rcs' : {size, w, l} 
+     (fin size, fin l, fin w,
+      l >=3, l <= 6, w >= 8, w <= 64, size >= 200, size <= 1600,               
+      w == 2^^l, l == lg2 w, size == 5*5*w, w == size/5/5, l == lg2 (size/5/5), size == 5*5*2^^l) 
+     => [inf][w]
+rcs' = [ [ if 2^^(lg2 (b+1)) == (b+1) then b7@(lg2 (b+1)) else False 
+          | (b:[l+1]) <- take`{w}[0...] ] | b7 <- groupBy`{7} rc_lfsr ]
+
+rcs : {size, w, l} 
+      (fin size, fin l, fin w,
+       l >=3, l <= 6, w >= 8, w <= 64, size >= 200, size <= 1600,               
+       w == 2^^l, l == lg2 w, size == 5*5*w, w == size/5/5, l == lg2 (size/5/5), size == 5*5*2^^l) 
+      => [24][w]
+rcs = [ take`{w} (reverse c) | c <- const ]
+  where const = [0x0000000000000001, 0x0000000000008082, 
+                 0x800000000000808A, 0x8000000080008000, 
+                 0x000000000000808B, 0x0000000080000001, 
+                 0x8000000080008081, 0x8000000000008009, 
+                 0x000000000000008A, 0x0000000000000088, 
+                 0x0000000080008009, 0x000000008000000A, 
+                 0x000000008000808B, 0x800000000000008B,
+                 0x8000000000008089, 0x8000000000008003,
+                 0x8000000000008002, 0x8000000000000080,
+                 0x000000000000800A, 0x800000008000000A,
+                 0x8000000080008081, 0x8000000000008080,
+                 0x0000000080000001, 0x8000000080008008]
+        
+property rcs_ok_200 n = n >= 24 || rcs`{200}@n == rcs'`{200}@n
+property rcs_ok_400 n = n >= 24 || rcs`{400}@n == rcs'`{400}@n
+property rcs_ok_800 n = n >= 24 || rcs`{800}@n == rcs'`{800}@n
+property rcs_ok_1600 n = n >= 24 || rcs`{1600}@n == rcs'`{1600}@n
+
+
+///////////////////// keccak-f /////////////////////
+
+keccak_f : {size, w, l} 
+           (fin size, fin l, fin w,        
+            l >=3, l <= 6, w >= 8, w <= 64, size >= 200, size <= 1600,               
+            w == 2^^l, l == lg2 w, size == 5*5*w, w == size/5/5, l == lg2 (size/5/5), size == 5*5*2^^l,
+            w == 2 ^^ lg2 w) 
+           => [5][5][w] -> [5][5][w]
+keccak_f A = rounds!0  
+   where rounds = [A] # [ keccak_round`{w=w} prev rc | rc <- take`{12 + 2*l} rcs | prev <- rounds ]
+
+keccak_f' : {size, w, l} 
+            (fin size, fin l, fin w,        
+             l >=3, l <= 6, w >= 8, w <= 64, size >= 200, size <= 1600,               
+             w == 2^^l, l == lg2 w, size == 5*5*w, w == size/5/5, l == lg2 (size/5/5), size == 5*5*2^^l,
+             w == 2 ^^ lg2 w) 
+            => [5][5][w] -> [5][5][w]
+keccak_f' A = rounds!0  
+   where rounds = [A] # [ keccak_round'`{w=w} prev rc | rc <- take`{12 + 2*l} rcs' | prev <- rounds ]
+
+keccak_f_zero = 0xe7dde140798f25f18a47c033f9ccd584eea95aa61e2698d54d49806f304715bd
+ 
+property keccak_ok = join (take`{32} (state_bytes`{1600} (keccak_f zero))) == keccak_f_zero
+
+
+/////////////////// sponge construction /////////////////
+
+pad101 : {rate, inlen}
+         (fin inlen, 
+          rate >= 2,
+          // cryptol demands:
+          rate * (1 + (1 + inlen) / rate) >= 2 + inlen)
+         => [inlen] -> [((inlen + 1)/rate + 1)*rate]
+pad101 msg =  msg # [True] # zero # [True] 
+
+
+sponge : {size, capacity, rate, w, l, inblocks} 
+         (fin size, fin l, fin w,
+          l >=3, l <= 6, w >= 8, w <= 64, size >= 200, size <= 1600,               
+          w == 2^^l, l == lg2 w, size == 5*5*w, w == size/5/5, l == lg2 (size/5/5), size == 5*5*2^^l,
+          rate + capacity == size,
+          capacity <= size - 2,
+          w == 2 ^^ lg2 w)
+         => [inblocks][rate] -> [inf][rate]
+sponge msg = [ take`{rate} (state_bits block) | block <- squeeze ] 
+  where absorb : [inblocks+1][5][5][w]
+        absorb = [zero] # [ keccak_f`{w=w} ( prev ^ state_of_bits (block # zero) ) 
+                           | block <- msg 
+                           | prev <- absorb ]
+        squeeze : [inf][5][5][w]
+        squeeze = [absorb!0] # [ keccak_f`{w=w} prev | prev <- squeeze ]
+ 
+
+/////////////////////////// SHA3 and related /////////////////////////////  
+  
+raw_shake : {security, capacity, rate, inlen, inblocks} 
+            (fin inlen,
+             capacity <= 1600 - 2,
+             rate >= 2,
+             2 * security == capacity,
+             rate + capacity == 1600,
+             rate == 1600 - capacity,
+             capacity == 1600 - rate,
+             inblocks == ((inlen + 3) / rate + 1),
+             // cryptol demands:
+             rate * (1 + (3 + inlen) / rate) >= 4 + inlen,
+             rate * (1 + (3 + inlen) / rate) == inblocks * (1600 - capacity) )
+            => [inlen] -> [inf] 
+raw_shake msg = join (sponge`{1600, capacity} (split`{inblocks} paddedmsg))
+  where paddedmsg = pad101`{rate} (msg#[True]#[True]) 
+
+shake : {security, capacity, rate, inlen} 
+        (fin inlen,
+         capacity <= 1600 - 2,
+         rate >= 2,
+         2 * security == capacity,
+         rate + capacity == 1600,
+         rate == 1600 - capacity,
+         capacity == 1600 - rate,
+         // cryptol demands:
+         (1600 - 2 * security) * (1 + (5 + inlen) / (1600 - 2 * security)) == (1 + (6 + inlen) / (1600 - 2 * security)) * (1600 - 2 * security),
+         (1600 - 2 * security) * (1 + (5 + inlen) / (1600 - 2 * security)) >= 6 + inlen,
+         1600 - 2 * security >= 2,
+         1600 >= 2 * security )
+        => [inlen] -> [inf]
+shake msg = raw_shake`{security} (msg#[True]#[True]) 
+
+       
+
+subm_sha3 : {outlen, capacity, rate, inlen, inblocks} 
+            (fin inlen,
+             outlen <= rate,
+             capacity <= 1600 - 2,
+             rate >= 2,
+             capacity == outlen * 2,
+             rate == 1600 - capacity,
+             inblocks == ((inlen + 1) / rate + 1),
+             // cryptol demands:
+             rate * (1 + (1 + inlen) / rate) >= 2 + inlen
+             )
+            => [inlen] -> [outlen] 
+subm_sha3 msg = take ( (sponge`{size=1600, rate=rate} (split`{inblocks} paddedmsg))@0 )
+  where paddedmsg = pad101`{rate} msg
+
+sha3 : {outlen, capacity, rate, inlen, inblocks} 
+       (fin inlen,
+        outlen <= rate,
+        capacity <= 1600 - 2,
+        rate >= 2,
+        capacity == outlen * 2,
+        rate == 1600 - capacity,
+        inblocks == ((inlen + 3) / rate + 1),
+        // cryptol demands:
+        rate * (1 + (3 + inlen) / rate) >= 4 + inlen
+        )
+       => [inlen] -> [outlen] 
+sha3 msg = take ( (sponge`{size=1600, rate=rate} (split`{inblocks} paddedmsg))@0 )
+  where paddedmsg = pad101`{rate} (msg # [False, True]) 
+
+sha3_quickfox = 0xac13d12e3b09583cc83a28f77d357253535ce2cf1d15216809633269a7eb1a39
+
+property sha3_ok = join (to_bytes (sha3`{256} (to_bits "the quick brown fox jumps over the lazy dog") ) ) == sha3_quickfox
+
+//////////////
+// standard modes
+// shake`{128|256}               as defined in DRAFT FIPS PUB 202, May 2014 
+// sha3`{224|256|384|512}        as defined in DRAFT FIPS PUB 202, May 2014
+// subm_sha3`{224|256|384|512}   as defined in the final keccak submission
+//
+// you probably want to feed them using either to_bits, 
+// or to_bytes to get the usual bit order. 
+//////////
