@@ -31,7 +31,7 @@ and you get:
 
 there are low level functions as well. you can calculate 200 bit keccak sponge with 192 bit capacity:
 
-    join sponge`{200, 192} (split 0x123456789abcdef0)
+     sponge`{200, 192} (split 0x123456789abcdef0)
 
 which gives you:
 
