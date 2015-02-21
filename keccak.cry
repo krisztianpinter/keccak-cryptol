@@ -81,11 +81,12 @@ state_of_bits' : {size, w, l}
                  => [5*5*w] -> [5][5][w]
 state_of_bits' s = [ [ [ s@(`w*(5*y + x) + z) | z:[11] <- [0..w-1] ] | y:[11] <- [0..4] ] | x:[11] <- [0..4] ] 
 
-  
+
 property state_bit_order_200 s = state_of_bits`{200} s == state_of_bits'`{200} s
 property state_bit_order_400 s = state_of_bits`{400} s == state_of_bits'`{400} s
 property state_bit_order_800 s = state_of_bits`{800} s == state_of_bits'`{800} s
 property state_bit_order_1600 s = state_of_bits`{1600} s == state_of_bits'`{1600} s
+
 
 //////////////////// theta ////////////////////
 
@@ -109,8 +110,9 @@ property theta_ok_400 A  =  theta A == theta'`{400} A
 property theta_ok_800 A  =  theta A == theta'`{800} A
 property theta_ok_1600 A  =  theta A == theta'`{1600} A
 
+
 //////////////////// rho ////////////////////
-             
+
 rho_mult : [2][2][6] -> [2][2][6] -> [2][2][6]
 rho_mult m1 m2 = [ [ (m1@j@0 * m2@0@i + m1@j@1 * m2@1@i)%5 | i <- [0..1] ] | j <- [0..1] ] 
 
@@ -124,7 +126,7 @@ rho_mat_pows = [rho_matid] # [ (rho_mult prev trans_mat) | p <- [1..23] | prev <
         rho_matid = [[1, 0], [0, 1]]
 
 rho_chk : [2][2][6] -> [6] -> [6] -> Bit
-rho_chk m x y = m@0@0 == x && m@1@0 == y 
+rho_chk m x y = m@0@0 == x && m@1@0 == y
 
 rho_rot' : {l} (l >= 3, l <= 6) => [6] -> [6] -> [l]
 rho_rot' x y = if x==0 && y==0 then 0 
@@ -137,10 +139,10 @@ rho_rot : {l} (l >= 3, l <= 6) => [6] -> [6] -> [l]
 rho_rot x y = drop`{9-l} (rots@x@y) 
   where rots : [5][5][9]
         rots = transpose [[  0,   1, 190,  28,  91], 
-                          [ 36, 300,   6,  55, 276], 
+                          [ 36, 300,   6,  55, 276],
                           [  3,  10, 171, 153, 231],
                           [105,  45,  15,  21, 136],
-                          [210,  66, 253, 120,  78]] 
+                          [210,  66, 253, 120,  78]]
 
 property rho_rot_ok_3 x y = x >= 5 || y >= 5 || rho_rot`{3} x y == rho_rot'`{3} x y
 property rho_rot_ok_4 x y = x >= 5 || y >= 5 || rho_rot`{4} x y == rho_rot'`{4} x y
@@ -155,7 +157,7 @@ rho' : {size, w, l}
 rho' A = [ [ [ A@x@y@(z-(rho_rot`{l} x y))
               | z <- take`{w}[0...] ]  | y <- [0..4] ]  | x <- [0..4] ]
 
-       
+
 rho : {size, w, l} 
       (fin size, fin l, fin w,
        l >=3, l <= 6, w >= 8, w <= 64, size >= 200, size <= 1600,               
@@ -207,8 +209,8 @@ pi A = [ [ A@x'@y' where x' = (x + 3*y) % 5
 
 
 property pi24_200 A =  s!0 == A  where s = [A] # [ pi`{200} prev | i <- [0..23]  | prev <- s ]  
-property pi24_400 A =  s!0 == A  where s = [A] # [ pi`{400} prev | i <- [0..23]  | prev <- s ]  
-property pi24_800 A =  s!0 == A  where s = [A] # [ pi`{800} prev | i <- [0..23]  | prev <- s ]  
+property pi24_400 A =  s!0 == A  where s = [A] # [ pi`{400} prev | i <- [0..23]  | prev <- s ]
+property pi24_800 A =  s!0 == A  where s = [A] # [ pi`{800} prev | i <- [0..23]  | prev <- s ]
 property pi24_1600 A =  s!0 == A  where s = [A] # [ pi`{1600} prev | i <- [0..23]  | prev <- s ]  
 
 property pi_ok_200 A = pi`{200} A == pi'`{200} A
@@ -238,7 +240,7 @@ iota A rc = [ [ A@0@0 ^ rc ] # A@0@@[1..4] ] # A@@[1..4]
 
 
 //////////////////// keccak_round ////////////////////
-   
+
 keccak_round : {size, w, l} 
                (fin size, fin l, fin w,
                 l >=3, l <= 6, w >= 8, w <= 64, size >= 200, size <= 1600,               
@@ -246,6 +248,7 @@ keccak_round : {size, w, l}
                 w == 2 ^^ lg2 w) 
                => [5][5][w] -> [w] -> [5][5][w]
 keccak_round A rc = iota (chi (pi (rho (theta A)))) rc 
+
 
 keccak_round' : {size, w, l} 
                (fin size, fin l, fin w,
@@ -261,11 +264,10 @@ keccak_round' A rc = iota (chi (pi' (rho' (theta' A)))) rc
 rc_poly = <| x^^8 + x^^6 + x^^5 + x^^4 + 1 |>
 
 rc_lfsr_s : [inf][8]
-rc_lfsr_s = bytes 
-  where bytes : [inf][8]
-        bytes = [0x01] # [ pmod (([False]#s) << 1) rc_poly | s <- bytes ]
+rc_lfsr_s = [0x01] # [ pmod (([False]#s) << 1) rc_poly | s <- rc_lfsr_s ]
 rc_lfsr : [inf]
 rc_lfsr = [ b!0 | b <- rc_lfsr_s ]
+
 
 // todo: improve, disgusting
 rcs' : {size, w, l} 
@@ -276,6 +278,7 @@ rcs' : {size, w, l}
 rcs' = [ [ if 2^^(lg2 (b+1)) == (b+1) then b7@(lg2 (b+1)) else False 
           | (b:[l+1]) <- take`{w}[0...] ] | b7 <- groupBy`{7} rc_lfsr ]
 
+
 rcs : {size, w, l} 
       (fin size, fin l, fin w,
        l >=3, l <= 6, w >= 8, w <= 64, size >= 200, size <= 1600,               
@@ -283,18 +286,19 @@ rcs : {size, w, l}
       => [24][w]
 rcs = [ take`{w} (reverse c) | c <- const ]
   where const = [0x0000000000000001, 0x0000000000008082, 
-                 0x800000000000808A, 0x8000000080008000, 
-                 0x000000000000808B, 0x0000000080000001, 
-                 0x8000000080008081, 0x8000000000008009, 
-                 0x000000000000008A, 0x0000000000000088, 
-                 0x0000000080008009, 0x000000008000000A, 
+                 0x800000000000808A, 0x8000000080008000,
+                 0x000000000000808B, 0x0000000080000001,
+                 0x8000000080008081, 0x8000000000008009,
+                 0x000000000000008A, 0x0000000000000088,
+                 0x0000000080008009, 0x000000008000000A,
                  0x000000008000808B, 0x800000000000008B,
                  0x8000000000008089, 0x8000000000008003,
                  0x8000000000008002, 0x8000000000000080,
                  0x000000000000800A, 0x800000008000000A,
                  0x8000000080008081, 0x8000000000008080,
                  0x0000000080000001, 0x8000000080008008]
-        
+
+
 property rcs_ok_200 n = n >= 24 || rcs`{200}@n == rcs'`{200}@n
 property rcs_ok_400 n = n >= 24 || rcs`{400}@n == rcs'`{400}@n
 property rcs_ok_800 n = n >= 24 || rcs`{800}@n == rcs'`{800}@n
@@ -312,6 +316,7 @@ keccak_f : {size, w, l}
 keccak_f A = rounds!0  
    where rounds = [A] # [ keccak_round`{w=w} prev rc | rc <- take`{12 + 2*l} rcs | prev <- rounds ]
 
+
 keccak_f' : {size, w, l} 
             (fin size, fin l, fin w,        
              l >=3, l <= 6, w >= 8, w <= 64, size >= 200, size <= 1600,               
@@ -321,21 +326,13 @@ keccak_f' : {size, w, l}
 keccak_f' A = rounds!0  
    where rounds = [A] # [ keccak_round'`{w=w} prev rc | rc <- take`{12 + 2*l} rcs' | prev <- rounds ]
 
+
 keccak_f_zero = 0xe7dde140798f25f18a47c033f9ccd584eea95aa61e2698d54d49806f304715bd
- 
+
 property keccak_ok = join (take`{32} (state_bytes`{1600} (keccak_f zero))) == keccak_f_zero
 
 
 /////////////////// sponge construction /////////////////
-
-pad101 : {rate, inlen}
-         (fin inlen, 
-          rate >= 2,
-          // cryptol demands:
-          rate * (1 + (1 + inlen) / rate) >= 2 + inlen)
-         => [inlen] -> [((inlen + 1)/rate + 1)*rate]
-pad101 msg =  msg # [True] # zero # [True] 
-
 
 absorb : {size, capacity, rate, w, l, inblocks} 
          (fin size, fin l, fin w,
@@ -364,7 +361,7 @@ absorb_ovr s msg = blocks!0
                         | block <- msg 
                         | prev <- blocks ]
 
-                           
+
 squeeze : {size, capacity, rate, w, l, inblocks} 
           (fin size, fin l, fin w,
            l >=3, l <= 6, w >= 8, w <= 64, size >= 200, size <= 1600,               
@@ -375,8 +372,8 @@ squeeze : {size, capacity, rate, w, l, inblocks}
           => [5][5][w] -> [inf][rate]
 squeeze s = [ take`{rate} (state_bits block) | block <- blocks ]
   where blocks = [s] # [ keccak_f`{w=w} prev | prev <- blocks ]
- 
- 
+
+
 sponge : {size, capacity, rate, w, l, inblocks} 
          (fin size, fin l, fin w,
           l >=3, l <= 6, w >= 8, w <= 64, size >= 200, size <= 1600,               
@@ -391,10 +388,29 @@ sponge : {size, capacity, rate, w, l, inblocks}
           size - rate + rate == 25 * w )
          => [inblocks][rate] -> [inf][rate]
 sponge msg = squeeze`{w=w} (absorb`{w=w} zero msg)
- 
+
+
+/////////////////////////// padding /////////////////////////////  
+
+pad101 : {rate, inlen}
+         (fin inlen, 
+          rate >= 2,
+          // cryptol demands:
+          rate * (1 + (1 + inlen) / rate) >= 2 + inlen)
+         => [inlen] -> [((inlen + 1)/rate + 1)*rate]
+pad101 msg =  msg # [True] # zero # [True] 
+
+pad10 : {rate, inlen}
+        (fin inlen, 
+         rate >= 1,
+         // cryptol demands:
+         rate * (1 + inlen / rate) >= 1 + inlen)
+        => [inlen] -> [(inlen/rate + 1)*rate]
+pad10 msg =  msg # [True] # zero 
+
 
 /////////////////////////// SHA3 and related /////////////////////////////  
-  
+
 raw_shake : {security, capacity, rate, inlen, inblocks} 
             (fin inlen,
              capacity <= 1600 - 2,
@@ -410,6 +426,7 @@ raw_shake : {security, capacity, rate, inlen, inblocks}
             => [inlen] -> [inf] 
 raw_shake msg = join (sponge`{1600, capacity} (split`{inblocks} paddedmsg))
   where paddedmsg = pad101`{rate} (msg#[True]#[True]) 
+
 
 shake : {security, capacity, rate, inlen} 
         (fin inlen,
@@ -427,7 +444,6 @@ shake : {security, capacity, rate, inlen}
         => [inlen] -> [inf]
 shake msg = raw_shake`{security} (msg#[True]#[True]) 
 
-       
 
 subm_sha3 : {outlen, capacity, rate, inlen, inblocks} 
             (fin inlen,
@@ -444,6 +460,7 @@ subm_sha3 : {outlen, capacity, rate, inlen, inblocks}
 subm_sha3 msg = take ( (sponge`{size=1600, rate=rate} (split`{inblocks} paddedmsg))@0 )
   where paddedmsg = pad101`{rate} msg
 
+
 sha3 : {outlen, capacity, rate, inlen, inblocks} 
        (fin inlen,
         outlen <= rate,
@@ -459,13 +476,15 @@ sha3 : {outlen, capacity, rate, inlen, inblocks}
 sha3 msg = take ( (sponge`{size=1600, rate=rate} (split`{inblocks} paddedmsg))@0 )
   where paddedmsg = pad101`{rate} (msg # [False, True]) 
 
+
 sha3_quickfox = 0xac13d12e3b09583cc83a28f77d357253535ce2cf1d15216809633269a7eb1a39
 
 property sha3_ok = join (to_bytes (sha3`{256} (to_bits "the quick brown fox jumps over the lazy dog") ) ) == sha3_quickfox
 
+
 //////////////
 // standard modes
-// shake`{128|256}               as defined in DRAFT FIPS PUB 202, May 2014 
+// shake`{128|256}               as defined in DRAFT FIPS PUB 202, May 2014
 // sha3`{224|256|384|512}        as defined in DRAFT FIPS PUB 202, May 2014
 // subm_sha3`{224|256|384|512}   as defined in the final keccak submission
 //
