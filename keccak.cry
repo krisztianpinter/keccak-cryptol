@@ -337,21 +337,60 @@ pad101 : {rate, inlen}
 pad101 msg =  msg # [True] # zero # [True] 
 
 
-sponge : {size, capacity, rate, w, l, inblocks} 
+absorb : {size, capacity, rate, w, l, inblocks} 
          (fin size, fin l, fin w,
           l >=3, l <= 6, w >= 8, w <= 64, size >= 200, size <= 1600,               
           w == 2^^l, l == lg2 w, size == 5*5*w, w == size/5/5, l == lg2 (size/5/5), size == 5*5*2^^l,
           rate + capacity == size,
           capacity <= size - 2,
           w == 2 ^^ lg2 w)
+         => [5][5][w] -> [inblocks][rate] -> [5][5][w]
+absorb s msg = blocks!0
+  where blocks = [s] # [ keccak_f`{w=w} ( prev ^ state_of_bits (block # zero) ) 
+                        | block <- msg 
+                        | prev <- blocks ]
+
+
+absorb_ovr : {size, capacity, rate, w, l, inblocks} 
+             (fin size, fin l, fin w,
+              l >=3, l <= 6, w >= 8, w <= 64, size >= 200, size <= 1600,               
+              w == 2^^l, l == lg2 w, size == 5*5*w, w == size/5/5, l == lg2 (size/5/5), size == 5*5*2^^l,
+              rate + capacity == size,
+              capacity <= size - 2,
+              w == 2 ^^ lg2 w)
+             => [5][5][w] -> [inblocks][rate] -> [5][5][w]
+absorb_ovr s msg = blocks!0
+  where blocks = [s] # [ keccak_f`{w=w} ( state_of_bits (block # (drop`{rate} (state_bits prev)) ) ) 
+                        | block <- msg 
+                        | prev <- blocks ]
+
+                           
+squeeze : {size, capacity, rate, w, l, inblocks} 
+          (fin size, fin l, fin w,
+           l >=3, l <= 6, w >= 8, w <= 64, size >= 200, size <= 1600,               
+           w == 2^^l, l == lg2 w, size == 5*5*w, w == size/5/5, l == lg2 (size/5/5), size == 5*5*2^^l,
+           rate + capacity == size,
+           capacity <= size - 2,
+           w == 2 ^^ lg2 w)
+          => [5][5][w] -> [inf][rate]
+squeeze s = [ take`{rate} (state_bits block) | block <- blocks ]
+  where blocks = [s] # [ keccak_f`{w=w} prev | prev <- blocks ]
+ 
+ 
+sponge : {size, capacity, rate, w, l, inblocks} 
+         (fin size, fin l, fin w,
+          l >=3, l <= 6, w >= 8, w <= 64, size >= 200, size <= 1600,               
+          w == 2^^l, l == lg2 w, size == 5*5*w, w == size/5/5, l == lg2 (size/5/5), size == 5*5*2^^l,
+          rate + capacity == size,
+          capacity <= size - 2,
+          w == 2 ^^ lg2 w,
+          // cryptol demands:
+          25 * w - 2 >= size-rate,
+          25 * w - 2 >= size-rate,
+          size - rate + rate == 25 * w,
+          size - rate + rate == 25 * w )
          => [inblocks][rate] -> [inf][rate]
-sponge msg = [ take`{rate} (state_bits block) | block <- squeeze ] 
-  where absorb : [inblocks+1][5][5][w]
-        absorb = [zero] # [ keccak_f`{w=w} ( prev ^ state_of_bits (block # zero) ) 
-                           | block <- msg 
-                           | prev <- absorb ]
-        squeeze : [inf][5][5][w]
-        squeeze = [absorb!0] # [ keccak_f`{w=w} prev | prev <- squeeze ]
+sponge msg = squeeze`{w=w} (absorb`{w=w} zero msg)
  
 
 /////////////////////////// SHA3 and related /////////////////////////////  
