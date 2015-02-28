@@ -307,24 +307,47 @@ property rcs_ok_1600 n = n >= 24 || rcs`{1600}@n == rcs'`{1600}@n
 
 ///////////////////// keccak-f /////////////////////
 
-keccak_f : {size, w, l} 
-           (fin size, fin l, fin w,        
-            l >=3, l <= 6, w >= 8, w <= 64, size >= 200, size <= 1600,               
+// r round version
+
+keccak_f_r : {r, size, w, l}
+             (fin size, fin l, fin w,
+              r <= 24,
+              l >=3, l <= 6, w >= 8, w <= 64, size >= 200, size <= 1600,
+              w == 2^^l, l == lg2 w, size == 5*5*w, w == size/5/5, l == lg2 (size/5/5), size == 5*5*2^^l,
+              w == 2 ^^ lg2 w)
+             => [5][5][w] -> [5][5][w]
+keccak_f_r A = rounds!0
+   where rounds = [A] # [ keccak_round`{size, w, l} prev rc | rc <- take`{r} rcs | prev <- rounds ]
+
+
+keccak_f_r' : {r, size, w, l}
+              (fin size, fin l, fin w, fin r,
+               l >=3, l <= 6, w >= 8, w <= 64, size >= 200, size <= 1600,
+               w == 2^^l, l == lg2 w, size == 5*5*w, w == size/5/5, l == lg2 (size/5/5), size == 5*5*2^^l,
+               w == 2 ^^ lg2 w)
+              => [5][5][w] -> [5][5][w]
+keccak_f_r' A = rounds!0
+   where rounds = [A] # [ keccak_round'`{size, w, l} prev rc | rc <- take`{r} rcs' | prev <- rounds ]
+
+
+// 12 + 2*l round standard versions
+
+keccak_f : {size, w, l}
+           (fin size, fin l, fin w,
+            l >=3, l <= 6, w >= 8, w <= 64, size >= 200, size <= 1600,
             w == 2^^l, l == lg2 w, size == 5*5*w, w == size/5/5, l == lg2 (size/5/5), size == 5*5*2^^l,
-            w == 2 ^^ lg2 w) 
+            w == 2 ^^ lg2 w )
            => [5][5][w] -> [5][5][w]
-keccak_f A = rounds!0  
-   where rounds = [A] # [ keccak_round`{w=w} prev rc | rc <- take`{12 + 2*l} rcs | prev <- rounds ]
+keccak_f A = keccak_f_r`{12+2*l, size, w, l} A
 
 
-keccak_f' : {size, w, l} 
-            (fin size, fin l, fin w,        
-             l >=3, l <= 6, w >= 8, w <= 64, size >= 200, size <= 1600,               
+keccak_f' : {size, w, l}
+            (fin size, fin l, fin w,
+             l >=3, l <= 6, w >= 8, w <= 64, size >= 200, size <= 1600,
              w == 2^^l, l == lg2 w, size == 5*5*w, w == size/5/5, l == lg2 (size/5/5), size == 5*5*2^^l,
-             w == 2 ^^ lg2 w) 
+             w == 2 ^^ lg2 w )
             => [5][5][w] -> [5][5][w]
-keccak_f' A = rounds!0  
-   where rounds = [A] # [ keccak_round'`{w=w} prev rc | rc <- take`{12 + 2*l} rcs' | prev <- rounds ]
+keccak_f' A = keccak_f_r'`{12+2*l, size, w, l} A
 
 
 keccak_f_zero = 0xe7dde140798f25f18a47c033f9ccd584eea95aa61e2698d54d49806f304715bd
