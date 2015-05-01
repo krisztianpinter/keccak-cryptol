@@ -29,9 +29,9 @@ and you get:
     [0x9b, 0x1b, 0x08, 0x5d, 0x51, 0x60, 0xbc, 0xce, 0xcb, 0x04, 0x9b,
      0xa5, 0xf4, 0x86, 0xd0, 0xa8]
 
-there are low level functions as well. you can calculate 200 bit keccak sponge with 192 bit capacity:
+there are low level functions as well. you can calculate 200 bit (w=8) keccak sponge with 192 bit capacity:
 
-     sponge`{200, 192} (split 0x123456789abcdef0)
+     sponge`{8, 192} (split 0x123456789abcdef0)
 
 which gives you:
 
