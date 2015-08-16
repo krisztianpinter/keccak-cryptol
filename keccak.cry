@@ -74,7 +74,7 @@ property state_bit_order_1600 s = state_of_bits`{64} s == state_of_bits'`{64} s
 
 theta' : {w} (w >= 2, fin w) => [5][5][w] -> [5][5][w]
 theta' A = [ [ [ (A@x@y@z) ^ (sum ((x+4)%5) z) ^ (sum ((x+1)%5) (z-1))   
-                | (z:[lg2 w]) <- take`{w} [0...] ]  | (y:[6]) <- [0..4] ]  | (x:[6]) <- [0..4] ]
+                | (z:[(width w)-1]) <- take`{w} [0...] ]  | (y:[6]) <- [0..4] ]  | (x:[6]) <- [0..4] ]
        where sum xx zz = A@xx@0@zz ^ A@xx@1@zz ^ A@xx@2@zz ^ A@xx@3@zz ^ A@xx@4@zz
 
 
@@ -106,14 +106,14 @@ rho_mat_pows = [rho_matid] # [ (rho_mult prev trans_mat) | p <- [1..23] | prev <
 rho_chk : [2][2][6] -> [6] -> [6] -> Bit
 rho_chk m x y = m@0@0 == x && m@1@0 == y
 
-rho_rot' : {w} (w >= 2, w <= 64) => [6] -> [6] -> [lg2 w]
+rho_rot' : {w} (w >= 2, w <= 64) => [6] -> [6] -> [(width w)-1]
 rho_rot' x y = if x==0 && y==0 then 0 
   else drop ( ((find!0)+1) * ((find!0)+2) / 2 )
               where find : [_][10]
                     find = [0] # [ if (rho_chk mpow x y) then t else old 
                                   | t <- [0..23] | mpow <- rho_mat_pows | old <- find ]  
 
-rho_rot : {w} (w >= 2, w <= 64) => [6] -> [6] -> [lg2 w]
+rho_rot : {w} (w >= 2, w <= 64) => [6] -> [6] -> [(width w)-1]
 rho_rot x y = drop (rots@x@y)
   where rots : [5][5][9]
         rots = transpose [[  0,   1, 190,  28,  91], 
@@ -129,7 +129,7 @@ property rho_rot_ok_6 x y = x >= 5 || y >= 5 || rho_rot`{64} x y == rho_rot'`{64
 
 
 rho' : {w} (w >= 2, w <= 64) => [5][5][w] -> [5][5][w]
-rho' A = [ [ [ A@x@y@oldz where (oldz:[lg2 w]) = newz - (rho_rot'`{w} x y)
+rho' A = [ [ [ A@x@y@oldz where (oldz:[(width w)-1]) = newz - (rho_rot'`{w} x y)
               | newz <- take`{w}[0...] ]  | y <- [0..4] ]  | x <- [0..4] ]
 
 
@@ -214,10 +214,9 @@ rc_lfsr : [inf]
 rc_lfsr = [ b!0 | b <- rc_lfsr_s ]
 
 
-// todo: improve, disgusting
-rcs' : {w} (w >= 2, w <= 64) => [inf][w]
-rcs' = [ [ if 2^^(lg2 (b+1)) == (b+1) then b7@(lg2 (b+1)) else False 
-          | (b:[lg2 w + 1]) <- take`{w}[0...] ] | b7 <- groupBy`{7} rc_lfsr ]
+rcs' : {w} (w >= 1, w <= 64) => [inf][w]
+rcs' = [ take ([b7@0] # [b7@1] # (0:[1]) # [b7@2] # (0:[3]) # [b7@3] # (0:[7]) # [b7@4] # (0:[15]) # [b7@5] # (0:[31]) # [b7@6])
+        | b7 <- groupBy`{7} rc_lfsr ]
 
 
 rcs : {w} (w <= 64) => [24][w]
@@ -236,10 +235,10 @@ rcs = [ take`{w} (reverse c) | c <- const ]
                  0x0000000080000001, 0x8000000080008008]
 
 
-property rcs_ok_200  n = n >= 24 || rcs`{8}@n  == rcs'`{8}@n
-property rcs_ok_400  n = n >= 24 || rcs`{16}@n == rcs'`{16}@n
-property rcs_ok_800  n = n >= 24 || rcs`{32}@n == rcs'`{32}@n
-property rcs_ok_1600 n = n >= 24 || rcs`{64}@n == rcs'`{64}@n
+property rcs_ok_200 = rcs`{8} == take rcs'`{8}
+property rcs_ok_400 = rcs`{16} == take rcs'`{16}
+property rcs_ok_800 = rcs`{32} == take rcs'`{32}
+property rcs_ok_1600 = rcs`{64} == take rcs'`{64}
 
 
 ///////////////////// keccak-f /////////////////////
@@ -258,17 +257,21 @@ keccak_f_r' A = rounds!0
 // 12 + 2*l round standard versions
 
 keccak_f : {w} (w >= 2, w <= 64) => [5][5][w] -> [5][5][w]
-keccak_f A = keccak_f_r`{12 + 2*lg2 w} A
+keccak_f A = keccak_f_r`{12 + 2*(width w) - 2} A
 
 
 keccak_f' : {w} (w >= 2, w <= 64) => [5][5][w] -> [5][5][w]
-keccak_f' A = keccak_f_r'`{12 + 2*lg2 w} A
+keccak_f' A = keccak_f_r'`{12 + 2*(width w) - 2} A
 
+
+property keccak_ok_200  a = keccak_f`{8}  a == keccak_f' a
+property keccak_ok_400  a = keccak_f`{16} a == keccak_f' a
+property keccak_ok_800  a = keccak_f`{32} a == keccak_f' a
+property keccak_ok_1600 a = keccak_f`{64} a == keccak_f' a
 
 keccak_f_zero = 0xe7dde140798f25f18a47c033f9ccd584eea95aa61e2698d54d49806f304715bd
 
 property keccak_ok = join (take`{32} (state_bytes (keccak_f`{64} zero))) == keccak_f_zero
-
 
 
 /////////////////// sponge construction /////////////////
@@ -286,10 +289,9 @@ absorb_ovr : {w, capacity, inblocks}
              (w >= 2, w <= 64, capacity <= 25*w-1, fin inblocks, fin capacity)
              => [5][5][w] -> [inblocks][25*w - capacity] -> [5][5][w]
 absorb_ovr s msg = blocks!0
-  where blocks = [s] # [ keccak_f ( state_of_bits (block # (drop`{25*w - capacity} (state_bits prev)) ) )
+  where blocks = [s] # [ keccak_f ( state_of_bits (block # (drop`{25*w-capacity} (state_bits prev)) ) )
                         | block <- msg 
                         | prev <- blocks ]
-
 
 squeeze : {w, capacity}
           (w >= 2, w <= 64, capacity <= 25*w-1, fin capacity)
@@ -367,12 +369,16 @@ sha3 msg = take ( join (sponge`{64, 2*outlen} paddedmsg) )
 sha3_256_quickfox = 0xac13d12e3b09583cc83a28f77d357253535ce2cf1d15216809633269a7eb1a39
 sha3_512_896bit = 0xafebb2ef542e6579c50cad06d2e578f9f8dd6881d7dc824d26360feebf18a4fa73e3261122948efcfd492e74e82e2189ed0fb440d187f382270cb455f21dd185
 sha3_224_1ma = 0xd69335b93325192e516a912e6d19a15cb51c6ed5c15243e7a7fd653c
+shake128_cc = 0x4dd4b0004a7d9e613a0f488b4846f804015f0f8ccdba5f7c16810bbc5a1c6fb2
+shake256_41fb = 0xb64ecacd5f7499acc085c908d35dcc1fc0131816f28d360592e1265079f92a5f844c4bf6aa50d98d52720797e8c992f43c76a73fd95f9bc4cd272157842ada25
 
 property sha3_ok_1 = join (to_bytes (sha3`{256} (to_bits "the quick brown fox jumps over the lazy dog") ) ) == sha3_256_quickfox
 property sha3_ok_2 = join (to_bytes (sha3`{512} (to_bits "abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmnhijklmnoijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstu") ) ) == sha3_512_896bit
-
-// kills cryptol:
+// kills cryptol, waiting for the bugfix:
 // property sha3_ok_3 = join (to_bytes (sha3`{224} (to_bits ['a' | _ <- take`{1000000} [0...]] ) ) ) == sha3_224_1ma
+property shake_ok_1 = join (to_bytes (take`{256} (shake`{128} (to_bits [0xcc]) ) ) ) == shake128_cc
+property shake_ok_2 = join (to_bytes (take`{512} (shake`{256} (to_bits [0x41, 0xfb]) ) ) ) == shake256_41fb
+
 
 //////////////
 // standard modes
